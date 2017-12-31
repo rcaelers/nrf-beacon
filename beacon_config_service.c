@@ -190,7 +190,7 @@ beacon_config_service_init()
 
   beacon_config_t *config = beacon_config_get();
 
-  characteristic_config_t interval_config = 
+  characteristic_config_t interval_config =
       {
         .uuid = BEACON_CONFIG_UUID_INTERVAL_CHAR,
         .read = ACCESS_TYPE_INSECURE,
@@ -198,12 +198,12 @@ beacon_config_service_init()
         .len = sizeof(config->interval),
         .value = &(config->interval),
         .handles = &m_handles_interval,
-        .description = "BDA cycle interval", 
+        .description = "BDA cycle interval",
         .format = BLE_GATT_CPF_FORMAT_UINT8,
       };
   characteristic_add(&interval_config);
 
-  characteristic_config_t remain_connectable_config = 
+  characteristic_config_t remain_connectable_config =
       {
         .uuid = BEACON_CONFIG_UUID_REMAIN_CONNECTABLE_CHAR,
         .read = ACCESS_TYPE_INSECURE,
@@ -216,7 +216,7 @@ beacon_config_service_init()
       };
   characteristic_add(&remain_connectable_config);
 
-  characteristic_config_t adv_interval_config = 
+  characteristic_config_t adv_interval_config =
       {
         .uuid = BEACON_CONFIG_UUID_ADV_INTERVAL_CHAR,
         .read = ACCESS_TYPE_INSECURE,
@@ -229,7 +229,7 @@ beacon_config_service_init()
       };
   characteristic_add(&adv_interval_config);
 
-  characteristic_config_t power_config = 
+  characteristic_config_t power_config =
       {
         .uuid = BEACON_CONFIG_UUID_POWER_CHAR,
         .read = ACCESS_TYPE_INSECURE,
@@ -242,7 +242,7 @@ beacon_config_service_init()
       };
   characteristic_add(&power_config);
 
-  characteristic_config_t pin_config = 
+  characteristic_config_t pin_config =
       {
         .uuid = BEACON_CONFIG_UUID_PIN_CHAR,
         .read = ACCESS_TYPE_SECURE,
@@ -255,7 +255,7 @@ beacon_config_service_init()
       };
   characteristic_add(&pin_config);
 
-  characteristic_config_t irk_config = 
+  characteristic_config_t irk_config =
       {
         .uuid = BEACON_CONFIG_UUID_IRK_CHAR,
         .read = ACCESS_TYPE_SECURE,

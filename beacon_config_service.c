@@ -244,7 +244,7 @@ beacon_config_service_init()
 
   characteristic_config_t pin_config = 
       {
-        .uuid = BEACON_CONFIG_UUID_POWER_CHAR,
+        .uuid = BEACON_CONFIG_UUID_PIN_CHAR,
         .read = ACCESS_TYPE_SECURE,
         .write = ACCESS_TYPE_SECURE,
         .len = sizeof(config->pin),
@@ -257,7 +257,7 @@ beacon_config_service_init()
 
   characteristic_config_t irk_config = 
       {
-        .uuid = BEACON_CONFIG_UUID_POWER_CHAR,
+        .uuid = BEACON_CONFIG_UUID_IRK_CHAR,
         .read = ACCESS_TYPE_SECURE,
         .write = ACCESS_TYPE_SECURE,
         .len = sizeof(config->irk),

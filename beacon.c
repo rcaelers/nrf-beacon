@@ -45,7 +45,6 @@ static const int NRF_BLE_MAX_MTU_SIZE = GATT_MTU_SIZE_DEFAULT;
 static const int APP_FEATURE_NOT_SUPPORTED = BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2;
 
 static uint16_t m_connection_handle = BLE_CONN_HANDLE_INVALID;
-static uint8_t m_beacon_data[23];
 static ble_gap_sec_params_t m_sec_params;
 static ble_gap_sec_keyset_t m_sec_keyset;
 
@@ -302,34 +301,12 @@ gap_params_init()
 }
 
 static void
-advertising_beacon_data_init()
-{
-  int index = 0;
-
-  m_beacon_data[index++] = 0x02;
-  m_beacon_data[index++] = 0x15;
-
-  for (int i = 0; i < 21; i++)
-    {
-      m_beacon_data[index++] = 0x00;
-    }
-}
-
-static void
 advertising_data_init()
 {
-  advertising_beacon_data_init();
-
-  ble_advdata_manuf_data_t manuf_data;
-  manuf_data.company_identifier = 0x0059;
-  manuf_data.data.p_data = (uint8_t *) m_beacon_data;
-  manuf_data.data.size = sizeof(m_beacon_data);
-
   ble_advdata_t advdata;
   memset(&advdata, 0, sizeof(advdata));
   advdata.flags = BLE_GAP_ADV_FLAGS_LE_ONLY_LIMITED_DISC_MODE;
   advdata.name_type = BLE_ADVDATA_NO_NAME;
-  advdata.p_manuf_specific_data = &manuf_data;
 
   ble_advdata_t srdata;
   memset(&srdata, 0, sizeof(srdata));

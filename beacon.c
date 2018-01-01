@@ -305,7 +305,7 @@ advertising_data_init()
 {
   ble_advdata_t advdata;
   memset(&advdata, 0, sizeof(advdata));
-  advdata.flags = BLE_GAP_ADV_FLAGS_LE_ONLY_LIMITED_DISC_MODE;
+  advdata.flags = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
   advdata.name_type = BLE_ADVDATA_NO_NAME;
 
   ble_advdata_t srdata;
@@ -394,7 +394,7 @@ beacon_start_advertising_connectable()
   adv_params.type        = BLE_GAP_ADV_TYPE_ADV_IND;
   adv_params.fp          = BLE_GAP_ADV_FP_ANY;
   adv_params.interval    = MSEC_TO_UNITS(config->adv_interval, UNIT_0_625_MS);
-  adv_params.timeout     = 60;
+  adv_params.timeout     = 0;
 
   beacon_stop_advertising();
 
@@ -417,7 +417,7 @@ beacon_start_advertising_non_connectable()
   adv_params.type        = BLE_GAP_ADV_TYPE_ADV_NONCONN_IND;
   adv_params.fp          = BLE_GAP_ADV_FP_ANY;
   adv_params.interval    = MSEC_TO_UNITS(config->adv_interval, UNIT_0_625_MS);
-  adv_params.timeout     = 60;
+  adv_params.timeout     = 0;
 
   beacon_stop_advertising();
 

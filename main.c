@@ -40,6 +40,9 @@
 static const int NRF_BLE_MAX_MTU_SIZE = GATT_MTU_SIZE_DEFAULT;
 #endif
 
+#define CENTRAL_LINK_COUNT 0
+#define PERIPHERAL_LINK_COUNT 1
+
 #define NRF_CLOCK_LFCLKSRC                                            \
   {   .source        = NRF_CLOCK_LF_SRC_XTAL,                         \
       .rc_ctiv       = 0,                                             \

@@ -23,7 +23,7 @@
 
 #include "ble.h"
 
-#define BEACON_CONFIG_VERSION (2)
+#define BEACON_CONFIG_VERSION (3)
 
 typedef struct
 {

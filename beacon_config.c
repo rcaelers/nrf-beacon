@@ -65,15 +65,15 @@ beacon_config_set_to_defaults()
 {
   m_storage.magic = MAGIC;
   m_storage.version = BEACON_CONFIG_VERSION;
-  m_storage.config.interval = 15;
-  m_storage.config.remain_connectable = 1;
-  m_storage.config.adv_interval = 350;
-  m_storage.config.power = 4;
+  m_storage.config.interval = BEACON_CONFIG_INTERVAL;
+  m_storage.config.remain_connectable = BEACON_CONFIG_REMAIN_CONNECTABLE;
+  m_storage.config.adv_interval = BEACON_CONFIG_ADV_INTERVAL;
+  m_storage.config.power = BEACON_CONFIG_POWER;
 
-  memcpy(&m_storage.config.pin, BEACON_FIXED_PIN, 6);
+  memcpy(&m_storage.config.pin, BEACON_CONFIG_PIN, 6);
   m_storage.config.pin[6] = 0;
 
-  char irk[16] = BEACON_IRK;
+  char irk[16] = BEACON_CONFIG_IRK;
   memcpy(&m_storage.config.irk, irk, BLE_GAP_SEC_KEY_LEN);
 }
 

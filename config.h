@@ -21,6 +21,20 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+// Default settings
+
+#define DEVICE_NAME  "Beacon"
+#define BEACON_CONFIG_PIN "123456"
+#define BEACON_CONFIG_INTERVAL 15
+#define BEACON_CONFIG_REMAIN_CONNECTABLE 0
+#define BEACON_CONFIG_ADV_INTERVAL 350
+#define BEACON_CONFIG_POWER 4
+
+// hexdump -n 16 -v -e '/1 "0x%02X, " ' /dev/urandon
+#define BEACON_CONFIG_IRK { 0xE7, 0x2C, 0xCA, 0x33, 0xB0, 0x3F, 0xCE, 0xAA, 0x6D, 0x34, 0xCF, 0xD9, 0xF6, 0xC0, 0x3A, 0xC2 }
+
+// Board configuration
+
 #define APP_TIMER_PRESCALER (0)
 #define IS_SRVC_CHANGED_CHARACT_PRESENT (1)
 
@@ -36,16 +50,4 @@
 #error Unknown board
 #endif
 
-#define CENTRAL_LINK_COUNT (0)
-#define PERIPHERAL_LINK_COUNT (1)
-
-#define MANUFACTURER_NAME "NA"
-#define DEVICE_NAME  "Home"
-
-#define BEACON_FIXED_PIN "123456"
-
-// hexdump -n 16 -v -e '/1 "0x%02X, " ' /dev/urandon
-#define BEACON_IRK { 0xE7, 0x2C, 0xCA, 0x33, 0xB0, 0x3F, 0xCE, 0xAA, 0x6D, 0x34, 0xCF, 0xD9, 0xF6, 0xC0, 0x3A, 0xC2 }
-
 #endif
-

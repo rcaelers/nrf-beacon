@@ -54,7 +54,7 @@ FS_REGISTER_CFG(fs_config_t fs_config) =
 static void
 beacon_config_fs_evt_handler(fs_evt_t const * const evt, fs_ret_t result)
 {
-  if (result != FS_SUCCESS && evt->id == FS_EVT_STORE)
+  if (result != FS_SUCCESS || evt->id == FS_EVT_STORE)
   {
     NVIC_SystemReset();
   }

@@ -179,3 +179,17 @@ indicator_t flash_four_times_fast_indicator [] = {
   {.action = INDICATOR_LED_OFF, .duration=400},
   {.action = INDICATOR_DONE,    .duration=0},
 };
+
+indicator_t flash_five_times_fast_indicator [] = {
+  {.action = INDICATOR_LED_ON,  .duration=200},
+  {.action = INDICATOR_LED_OFF, .duration=100},
+  {.action = INDICATOR_LED_ON,  .duration=200},
+  {.action = INDICATOR_LED_OFF, .duration=100},
+  {.action = INDICATOR_LED_ON,  .duration=200},
+  {.action = INDICATOR_LED_OFF, .duration=100},
+  {.action = INDICATOR_LED_ON,  .duration=200},
+  {.action = INDICATOR_LED_OFF, .duration=100},
+  {.action = INDICATOR_LED_ON,  .duration=200},
+  {.action = INDICATOR_LED_OFF, .duration=400},
+  {.action = INDICATOR_DONE,    .duration=0},
+};

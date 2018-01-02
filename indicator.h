@@ -47,5 +47,6 @@ extern indicator_t flash_three_times_indicator [];
 extern indicator_t flash_twice_fast_indicator [];
 extern indicator_t flash_three_times_fast_indicator [];
 extern indicator_t flash_four_times_fast_indicator [];
+extern indicator_t flash_five_times_fast_indicator [];
 
 #endif // INDICATOR_H

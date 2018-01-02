@@ -116,38 +116,39 @@ on_button_callback(button_event_t event, int duration)
   switch (event)
     {
     case BUTTON_EVENT_PRESS:
-      if (! beacon_is_connected())
-        {
-          if (duration == 2)
-            {
-              indicator_start(flash_twice_fast_indicator);
-            }
-          else if (duration == 5)
-            {
-              indicator_start(flash_three_times_fast_indicator);
-            }
-          else if (duration == 10)
-            {
-              indicator_start(flash_four_times_fast_indicator);
-            }
-        }
+      NRF_LOG_DEBUG("Button press\n");
+      if (duration == 2 && !beacon_is_connected())
+      {
+        indicator_start(flash_twice_fast_indicator);
+      }
+      else if (duration == 5)
+      {
+        indicator_start(flash_three_times_fast_indicator);
+      }
+      else if (duration == 10)
+      {
+        indicator_start(flash_four_times_fast_indicator);
+      }
+      else if (duration == 20)
+      {
+        indicator_start(flash_four_times_fast_indicator);
+      }
       break;
 
     case BUTTON_EVENT_RELEASE:
-      if (! beacon_is_connected())
-        {
-          if (duration >= 2 && duration < 5)
-            {
-              beacon_start_advertising_connectable();
-            }
-          else if (duration >= 5 && duration < 10)
-            {
-            }
-          else if (duration >= 10)
-            {
-              beacon_config_reset();
-            }
-        }
+      NRF_LOG_DEBUG("Button release\n");
+      if (duration >= 20)
+      {
+        NVIC_SystemReset();
+      }
+      else if (duration >= 10)
+      {
+        beacon_config_reset();
+      }
+      else if (duration >= 2 && duration < 5 && !beacon_is_connected())
+      {
+        beacon_start_advertising_connectable();
+      }
       break;
     }
 }

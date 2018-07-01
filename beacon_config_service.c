@@ -22,8 +22,10 @@
 #include <stdbool.h>
 
 #include "app_error.h"
-#include "beacon_config_service.h"
+#include "nrf_sdh.h"
+#include "nrf_sdh_ble.h"
 
+#include "beacon_config_service.h"
 #include "beacon_config.h"
 
 #include <string.h>
@@ -42,7 +44,6 @@ typedef struct
 } characteristic_config_t;
 
 static uint16_t m_service_handle;
-static uint16_t m_connection_handle = BLE_CONN_HANDLE_INVALID;
 static ble_gatts_char_handles_t m_handles_interval;
 static ble_gatts_char_handles_t m_handles_remain_connectable;
 static ble_gatts_char_handles_t m_handles_adv_interval;
@@ -129,22 +130,15 @@ characteristic_add(const characteristic_config_t *characteristic_config)
 }
 
 static void
-on_write(ble_evt_t *ble_evt)
+on_write(const ble_evt_t *ble_evt)
 {
   m_config_changed = true;
 }
 
 static void
-on_connect(ble_evt_t *ble_evt)
-{
-  m_connection_handle = ble_evt->evt.gap_evt.conn_handle;
-}
-
-static void
-on_disconnect(ble_evt_t *ble_evt)
+on_disconnect(const ble_evt_t *ble_evt)
 {
   UNUSED_PARAMETER(ble_evt);
-  m_connection_handle = BLE_CONN_HANDLE_INVALID;
 
   if (m_config_changed)
   {
@@ -153,15 +147,11 @@ on_disconnect(ble_evt_t *ble_evt)
   }
 }
 
-void
-beacon_config_service_ble_event_dispatch(ble_evt_t *ble_evt)
+static void
+on_ble_event(ble_evt_t const *ble_evt, void *context)
 {
   switch (ble_evt->header.evt_id)
     {
-    case BLE_GAP_EVT_CONNECTED:
-      on_connect(ble_evt);
-      break;
-
     case BLE_GAP_EVT_DISCONNECTED:
       on_disconnect(ble_evt);
       break;
@@ -266,4 +256,6 @@ beacon_config_service_init()
         .description = "IRK",
       };
   characteristic_add(&irk_config);
+
+  NRF_SDH_BLE_OBSERVER(m_observer, 3, on_ble_event, NULL);
 }

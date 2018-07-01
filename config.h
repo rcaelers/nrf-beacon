@@ -30,19 +30,21 @@
 #define BEACON_CONFIG_ADV_INTERVAL 350
 #define BEACON_CONFIG_POWER 4
 
+
 // hexdump -n 16 -v -e '/1 "0x%02X, " ' /dev/urandon
 #define BEACON_CONFIG_IRK { 0xE7, 0x2C, 0xCA, 0x33, 0xB0, 0x3F, 0xCE, 0xAA, 0x6D, 0x34, 0xCF, 0xD9, 0xF6, 0xC0, 0x3A, 0xC2 }
 
 // Board configuration
 
 #define APP_TIMER_PRESCALER (0)
+#define APP_BLE_CONN_CFG_TAG (1)
 #define IS_SRVC_CHANGED_CHARACT_PRESENT (1)
 
-#if defined(BOARD_TRACKR)
-#define LED_PIN    19
-#define LED_INVERT  0
-#define BUTTON_PIN 17
-#elif defined(BOARD_SPARKFUN)
+#if defined(BOARD_SPARKFUN)
+#define LED_PIN     7
+#define LED_INVERT  1
+#define BUTTON_PIN  6
+#elif defined(BOARD_HOLYIOT)
 #define LED_PIN     7
 #define LED_INVERT  1
 #define BUTTON_PIN  6

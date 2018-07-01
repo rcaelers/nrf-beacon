@@ -1,4 +1,4 @@
-// Copyright (C) 2017 Rob Caelers <rob.caelers@gmail.com>
+// Copyright (C) 2017, 2018 Rob Caelers <rob.caelers@gmail.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -24,11 +24,17 @@
 #include "config.h"
 
 #include "app_error.h"
-#include "fstorage.h"
+#include "nrf_fstorage.h"
+#include "nrf_fstorage_sd.h"
+#include "nrf_log.h"
+#include "nrf_log_ctrl.h"
+#include "nrf_pwr_mgmt.h"
 
 #include <string.h>
 
 static const uint32_t MAGIC = 0x7F38A9B1;
+static const uint32_t PHY_PAGES = 2;
+static const uint32_t PHY_PAGE_SIZE = 1024;
 
 typedef struct
 {
@@ -39,25 +45,32 @@ typedef struct
 
 static storage_t m_storage;
 
-static void beacon_config_fs_evt_handler(fs_evt_t const * const evt, fs_ret_t result);
+static void fstorage_evt_handler(nrf_fstorage_evt_t *evt);
 
-FS_REGISTER_CFG(fs_config_t fs_config) =
-{
-  NULL,                           // Begin pointer (set by fs_init)
-  NULL,                           // End pointer (set by fs_init)
-  &beacon_config_fs_evt_handler,  // Function for event callbacks.
-  1,                              // Number of physical flash pages required.
-  0xFE                            // Priority for flash usage.
-};
-
-
-static void
-beacon_config_fs_evt_handler(fs_evt_t const * const evt, fs_ret_t result)
-{
-  if (result != FS_SUCCESS || evt->id == FS_EVT_STORE)
+NRF_FSTORAGE_DEF(nrf_fstorage_t m_fs) =
   {
-    NVIC_SystemReset();
-  }
+   .evt_handler = fstorage_evt_handler,
+  };
+
+static
+void fstorage_evt_handler(nrf_fstorage_evt_t *evt)
+{
+  if (evt->result != NRF_SUCCESS)
+    {
+      return;
+    }
+
+  switch (evt->id)
+    {
+    case NRF_FSTORAGE_EVT_WRITE_RESULT:
+      {
+        NVIC_SystemReset();
+      }
+      break;
+
+    default:
+      break;
+    }
 }
 
 static void
@@ -77,32 +90,66 @@ beacon_config_set_to_defaults()
   memcpy(&m_storage.config.irk, irk, BLE_GAP_SEC_KEY_LEN);
 }
 
+static void
+wait_for_flash_ready()
+{
+  while (nrf_fstorage_is_busy(&m_fs))
+    {
+      if (NRF_LOG_PROCESS() == false)
+        {
+          nrf_pwr_mgmt_run();
+        }
+    }
+}
+
+static uint32_t
+flash_end_addr()
+{
+  uint32_t const bootloader_addr = NRF_UICR->NRFFW[0];
+  uint32_t const page_sz         = NRF_FICR->CODEPAGESIZE;
+  uint32_t const code_sz         = NRF_FICR->CODESIZE;
+
+  NRF_LOG_INFO("addrs %x %d %d.", bootloader_addr, page_sz, code_sz);
+
+  return (bootloader_addr != 0xFFFFFFFF) ? bootloader_addr : (code_sz * page_sz);
+}
+
+static void
+flash_bounds_set()
+{
+  uint32_t flash_size  = (PHY_PAGES * PHY_PAGE_SIZE * sizeof(uint32_t));
+  m_fs.end_addr   = flash_end_addr();
+  m_fs.start_addr = m_fs.end_addr - flash_size;
+}
+
 void
 beacon_config_save()
 {
-  uint32_t err_code = fs_erase(&fs_config, fs_config.p_start_addr, 1, NULL);
+  uint32_t err_code = nrf_fstorage_erase(&m_fs, m_fs.start_addr, PHY_PAGES, NULL);
   APP_ERROR_CHECK(err_code);
+  wait_for_flash_ready(&m_fs);
 
-  err_code = fs_store(&fs_config,
-                      fs_config.p_start_addr,
-                      (uint32_t *)&m_storage,
-                      (sizeof(storage_t) + 3) / 4,
-                      NULL);
+  err_code = nrf_fstorage_write(&m_fs, m_fs.start_addr, &m_storage, sizeof(m_storage), NULL);
   APP_ERROR_CHECK(err_code);
+  wait_for_flash_ready(&m_fs);
 }
 
 void
 beacon_config_init()
 {
-  uint32_t err_code = fs_init();
+  flash_bounds_set();
+
+  uint32_t err_code = nrf_fstorage_init(&m_fs, &nrf_fstorage_sd, NULL);
   APP_ERROR_CHECK(err_code);
 
-  memcpy(&m_storage, fs_config.p_start_addr, sizeof(storage_t));
+  err_code = nrf_fstorage_read(&m_fs, m_fs.start_addr, &m_storage, sizeof(m_storage));
+  APP_ERROR_CHECK(err_code);
+  wait_for_flash_ready(&m_fs);
 
   if (m_storage.magic != MAGIC || m_storage.version != BEACON_CONFIG_VERSION)
-  {
-    beacon_config_reset();
-  }
+    {
+      beacon_config_reset();
+    }
 }
 
 void

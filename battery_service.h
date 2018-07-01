@@ -24,6 +24,5 @@
 #include "ble.h"
 
 void battery_service_init();
-void battery_service_ble_event_dispatch(ble_evt_t *ble_evt);
 
 #endif // BATTERY_SERVICE_H

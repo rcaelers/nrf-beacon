@@ -1,4 +1,4 @@
-// Copyright (C) 2017 Rob Caelers <rob.caelers@gmail.com>
+// Copyright (C) 2017, 2018 Rob Caelers <rob.caelers@gmail.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -29,27 +29,43 @@
 #include "config.h"
 
 #include "app_timer.h"
-#include "ble.h"
 #include "ble_advdata.h"
 #include "ble_conn_params.h"
-#include "ble_hci.h"
-#include "ble_srv_common.h"
 
-#define NRF_LOG_MODULE_NAME "BEACON"
+#include "nrf_sdh.h"
+#include "nrf_sdh_ble.h"
+#include "nrf_ble_gatt.h"
 #include "nrf_log.h"
-#include "nrf_log_ctrl.h"
 
-#if (NRF_SD_BLE_API_VERSION == 3)
-static const int NRF_BLE_MAX_MTU_SIZE = GATT_MTU_SIZE_DEFAULT;
-#endif
 static const int APP_FEATURE_NOT_SUPPORTED = BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2;
 
-static uint16_t m_connection_handle = BLE_CONN_HANDLE_INVALID;
 static ble_gap_sec_params_t m_sec_params;
 static ble_gap_sec_keyset_t m_sec_keyset;
 
+static uint16_t m_connection_handle = BLE_CONN_HANDLE_INVALID;
+static uint8_t m_adv_handle = BLE_GAP_ADV_SET_HANDLE_NOT_SET;
+static uint8_t m_enc_advdata[BLE_GAP_ADV_SET_DATA_SIZE_MAX];
+static uint8_t m_enc_scan_response_data[BLE_GAP_ADV_SET_DATA_SIZE_MAX];
+
+NRF_BLE_GATT_DEF(m_gatt);
+
+static ble_gap_adv_data_t m_adv_data =
+  {
+   .adv_data =
+   {
+    .p_data = m_enc_advdata,
+    .len    = BLE_GAP_ADV_SET_DATA_SIZE_MAX
+   },
+   .scan_rsp_data =
+   {
+    .p_data = m_enc_scan_response_data,
+    .len    = BLE_GAP_ADV_SET_DATA_SIZE_MAX
+
+   }
+  };
+
 static void
-on_ble_event(ble_evt_t *ble_evt)
+on_ble_event(ble_evt_t const *ble_evt, void *context)
 {
   uint32_t err_code = NRF_SUCCESS;
 
@@ -74,13 +90,23 @@ on_ble_event(ble_evt_t *ble_evt)
       indicator_stop();
       break;
 
-    case BLE_GAP_EVT_TIMEOUT:
-      if (ble_evt->evt.gap_evt.params.timeout.src == BLE_GAP_TIMEOUT_SRC_ADVERTISING)
+    case BLE_GAP_EVT_PHY_UPDATE_REQUEST:
+      {
+        ble_gap_phys_t const phys =
+          {
+           .rx_phys = BLE_GAP_PHY_AUTO,
+           .tx_phys = BLE_GAP_PHY_AUTO,
+          };
+        err_code = sd_ble_gap_phy_update(ble_evt->evt.gap_evt.conn_handle, &phys);
+        APP_ERROR_CHECK(err_code);
+      }
+      break;
+
+    case BLE_GAP_EVT_ADV_SET_TERMINATED:
+      NRF_LOG_DEBUG("Adv timeout.");
+      if (!beacon_is_connected())
         {
-          if (!beacon_is_connected())
-            {
-              beacon_start_advertising();
-            }
+          beacon_start_advertising();
         }
       break;
 
@@ -126,13 +152,6 @@ on_ble_event(ble_evt_t *ble_evt)
           }
       }
       break;
-
-#if (NRF_SD_BLE_API_VERSION == 3)
-    case BLE_GATTS_EVT_EXCHANGE_MTU_REQUEST:
-      err_code = sd_ble_gatts_exchange_mtu_reply(ble_evt->evt.gatts_evt.conn_handle, NRF_BLE_MAX_MTU_SIZE);
-      APP_ERROR_CHECK(err_code);
-      break;
-#endif
 
     case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
       NRF_LOG_DEBUG("SEC PARAMS REQUEST.\r\n");
@@ -190,18 +209,6 @@ gap_privacy_init()
     ble_gap_irk_t irk = { 0 };
     memcpy(&irk.irk, config->irk, BLE_GAP_SEC_KEY_LEN);
 
-#if (NRF_SD_BLE_API_VERSION == 2)
-    ble_gap_addr_t gap_address;
-    gap_address.addr_type = BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_RESOLVABLE;
-    uint32_t err_code = sd_ble_gap_address_set(BLE_GAP_ADDR_CYCLE_MODE_AUTO, &gap_address);
-    APP_ERROR_CHECK(err_code);
-
-    ble_opt_t opt;
-    opt.gap_opt.privacy.p_irk = &irk;
-    opt.gap_opt.privacy.interval_s = config->interval  * 60;
-    sd_ble_opt_set(BLE_GAP_OPT_PRIVACY, &opt);
-
-#elif (NRF_SD_BLE_API_VERSION == 3)
     ble_gap_privacy_params_t ble_gap_privacy_params = {0};
     ble_gap_privacy_params.privacy_mode = BLE_GAP_PRIVACY_MODE_DEVICE_PRIVACY;
     ble_gap_privacy_params.private_addr_type = BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_RESOLVABLE;
@@ -209,7 +216,6 @@ gap_privacy_init()
     ble_gap_privacy_params.p_device_irk = &irk;
     uint32_t err_code = sd_ble_gap_privacy_set(&ble_gap_privacy_params);
     APP_ERROR_CHECK(err_code);
-#endif
   }
 }
 
@@ -256,7 +262,7 @@ gap_txpower_init()
     power = 4;
   }
 
-  uint32_t err_code = sd_ble_gap_tx_power_set(power);
+  ret_code_t err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_adv_handle, power);
   APP_ERROR_CHECK(err_code);
 }
 
@@ -287,8 +293,8 @@ gap_params_init()
   APP_ERROR_CHECK(err_code);
 
   memset(&gap_conn_params, 0, sizeof(gap_conn_params));
-  gap_conn_params.min_conn_interval = MSEC_TO_UNITS(50, UNIT_1_25_MS);
-  gap_conn_params.max_conn_interval = MSEC_TO_UNITS(90, UNIT_1_25_MS);
+  gap_conn_params.min_conn_interval = MSEC_TO_UNITS(100, UNIT_1_25_MS);
+  gap_conn_params.max_conn_interval = MSEC_TO_UNITS(200, UNIT_1_25_MS);
   gap_conn_params.slave_latency = 0;
   gap_conn_params.conn_sup_timeout  = MSEC_TO_UNITS(4000, UNIT_10_MS);
 
@@ -296,23 +302,34 @@ gap_params_init()
   APP_ERROR_CHECK(err_code);
 
   gap_privacy_init();
-  gap_txpower_init();
   gap_pin_init();
+}
+
+static void gatt_init(void)
+{
+  ret_code_t err_code = nrf_ble_gatt_init(&m_gatt, NULL);
+  APP_ERROR_CHECK(err_code);
 }
 
 static void
 advertising_data_init()
 {
+  ret_code_t    err_code;
   ble_advdata_t advdata;
-  memset(&advdata, 0, sizeof(advdata));
-  advdata.flags = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
-  advdata.name_type = BLE_ADVDATA_NO_NAME;
-
   ble_advdata_t srdata;
-  memset(&srdata, 0, sizeof(srdata));
-  srdata.name_type = BLE_ADVDATA_FULL_NAME;
 
-  uint32_t err_code = ble_advdata_set(&advdata, &srdata);
+  memset(&advdata, 0, sizeof(advdata));
+  advdata.name_type          = BLE_ADVDATA_NO_NAME;
+  advdata.include_appearance = true;
+  advdata.flags              = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
+
+  memset(&srdata, 0, sizeof(srdata));
+  srdata.name_type          = BLE_ADVDATA_FULL_NAME;
+
+  err_code = ble_advdata_encode(&advdata, m_adv_data.adv_data.p_data, &m_adv_data.adv_data.len);
+  APP_ERROR_CHECK(err_code);
+
+  err_code = ble_advdata_encode(&srdata, m_adv_data.scan_rsp_data.p_data, &m_adv_data.scan_rsp_data.len);
   APP_ERROR_CHECK(err_code);
 }
 
@@ -345,8 +362,8 @@ conn_params_init()
   ble_conn_params_init_t conn_params_init;
   memset(&conn_params_init, 0, sizeof(conn_params_init));
 
-  conn_params_init.first_conn_params_update_delay = APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER);
-  conn_params_init.next_conn_params_update_delay  = APP_TIMER_TICKS(30000, APP_TIMER_PRESCALER);
+  conn_params_init.first_conn_params_update_delay = APP_TIMER_TICKS(5000);
+  conn_params_init.next_conn_params_update_delay  = APP_TIMER_TICKS(30000);
   conn_params_init.max_conn_params_update_count   = 3;
   conn_params_init.start_on_notify_cccd_handle    = BLE_GATT_HANDLE_INVALID;
   conn_params_init.disconnect_on_fail             = false;
@@ -379,9 +396,12 @@ beacon_init()
 {
   sec_param_init();
   gap_params_init();
+  gatt_init();
   advertising_data_init();
   services_init();
   conn_params_init();
+
+  NRF_SDH_BLE_OBSERVER(m_ble_observer, 3, on_ble_event, NULL);
 }
 
 void
@@ -389,17 +409,23 @@ beacon_start_advertising_connectable()
 {
   beacon_config_t *config = beacon_config_get();
 
-  ble_gap_adv_params_t adv_params;
-  memset(&adv_params, 0, sizeof(adv_params));
-  adv_params.type        = BLE_GAP_ADV_TYPE_ADV_IND;
-  adv_params.fp          = BLE_GAP_ADV_FP_ANY;
-  adv_params.interval    = MSEC_TO_UNITS(config->adv_interval, UNIT_0_625_MS);
-  adv_params.timeout     = 0;
-
   beacon_stop_advertising();
 
-  uint32_t err_code = sd_ble_gap_adv_start(&adv_params);
+  ble_gap_adv_params_t adv_params;
+  memset(&adv_params, 0, sizeof(adv_params));
+  adv_params.primary_phy     = BLE_GAP_PHY_1MBPS;
+  adv_params.duration        = 60 * 100;
+  adv_params.properties.type = BLE_GAP_ADV_TYPE_CONNECTABLE_SCANNABLE_UNDIRECTED;
+  adv_params.p_peer_addr     = NULL;
+  adv_params.filter_policy   = BLE_GAP_ADV_FP_ANY;
+  adv_params.interval        = MSEC_TO_UNITS(config->adv_interval, UNIT_0_625_MS);
+
+  uint32_t err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &adv_params);
   APP_ERROR_CHECK(err_code);
+
+  err_code = sd_ble_gap_adv_start(m_adv_handle, APP_BLE_CONN_CFG_TAG);
+  APP_ERROR_CHECK(err_code);
+  gap_txpower_init();
 
   if (! config->remain_connectable)
   {
@@ -412,17 +438,24 @@ beacon_start_advertising_non_connectable()
 {
   beacon_config_t *config = beacon_config_get();
 
-  ble_gap_adv_params_t adv_params;
-  memset(&adv_params, 0, sizeof(adv_params));
-  adv_params.type        = BLE_GAP_ADV_TYPE_ADV_NONCONN_IND;
-  adv_params.fp          = BLE_GAP_ADV_FP_ANY;
-  adv_params.interval    = MSEC_TO_UNITS(config->adv_interval, UNIT_0_625_MS);
-  adv_params.timeout     = 0;
-
   beacon_stop_advertising();
 
-  uint32_t err_code = sd_ble_gap_adv_start(&adv_params);
+  ble_gap_adv_params_t adv_params;
+  memset(&adv_params, 0, sizeof(adv_params));
+  adv_params.primary_phy     = BLE_GAP_PHY_1MBPS;
+  adv_params.duration        = BLE_GAP_ADV_TIMEOUT_GENERAL_UNLIMITED;
+  adv_params.properties.type = BLE_GAP_ADV_TYPE_NONCONNECTABLE_SCANNABLE_UNDIRECTED;
+  adv_params.p_peer_addr     = NULL;
+  adv_params.filter_policy   = BLE_GAP_ADV_FP_ANY;
+  adv_params.interval        = MSEC_TO_UNITS(config->adv_interval, UNIT_0_625_MS);
+
+  uint32_t err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &adv_params);
   APP_ERROR_CHECK(err_code);
+
+  err_code = sd_ble_gap_adv_start(m_adv_handle, APP_BLE_CONN_CFG_TAG);
+  APP_ERROR_CHECK(err_code);
+
+  gap_txpower_init();
 
   indicator_stop();
 }
@@ -444,10 +477,13 @@ beacon_start_advertising()
 void
 beacon_stop_advertising()
 {
-  uint32_t err_code = sd_ble_gap_adv_stop();
-  if (err_code != NRF_ERROR_INVALID_STATE)
+  if (m_adv_handle != BLE_GAP_ADV_SET_HANDLE_NOT_SET)
     {
-      APP_ERROR_CHECK(err_code);
+      uint32_t err_code = sd_ble_gap_adv_stop(m_adv_handle);
+      if (err_code != NRF_ERROR_INVALID_STATE)
+        {
+          APP_ERROR_CHECK(err_code);
+        }
     }
 }
 
@@ -455,13 +491,4 @@ bool
 beacon_is_connected()
 {
   return m_connection_handle != BLE_CONN_HANDLE_INVALID;
-}
-
-void
-beacon_ble_event_dispatch(ble_evt_t *ble_evt)
-{
-  ble_conn_params_on_ble_evt(ble_evt);
-  on_ble_event(ble_evt);
-  battery_service_ble_event_dispatch(ble_evt);
-  beacon_config_service_ble_event_dispatch(ble_evt);
 }

@@ -1,1 +1,1 @@
-boards/sparkfun_nrf52/Makefile
+boards/sparkfun/Makefile

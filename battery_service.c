@@ -29,8 +29,8 @@
 #include "app_timer.h"
 #include "ble_bas.h"
 
-static ble_bas_t m_bas;
 APP_TIMER_DEF(m_battery_timer_id);
+BLE_BAS_DEF(m_bas);
 
 static void
 on_battery_service_timer(void *context)
@@ -42,13 +42,12 @@ static void
 on_battery_voltage(uint16_t voltage)
 {
   int battery_percentage = battery_level_in_percent(voltage);
-  uint32_t err_code = ble_bas_battery_level_update(&m_bas, battery_percentage);
-
-  if ( (err_code != NRF_SUCCESS) &&
-       (err_code != NRF_ERROR_INVALID_STATE) &&
-       (err_code != BLE_ERROR_NO_TX_PACKETS) &&
-       (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
-       )
+  uint32_t err_code = ble_bas_battery_level_update(&m_bas, battery_percentage, BLE_CONN_HANDLE_ALL);
+  if ((err_code != NRF_SUCCESS) &&
+      (err_code != NRF_ERROR_INVALID_STATE) &&
+      (err_code != NRF_ERROR_RESOURCES) &&
+      (err_code != BLE_ERROR_GATTS_SYS_ATTR_MISSING)
+      )
     {
       APP_ERROR_HANDLER(err_code);
     }
@@ -61,7 +60,7 @@ on_bas_evt(ble_bas_t *bas, ble_bas_evt_t *evt)
   switch (evt->evt_type)
     {
     case BLE_BAS_EVT_NOTIFICATION_ENABLED:
-      err_code = app_timer_start(m_battery_timer_id, APP_TIMER_TICKS(5000, APP_TIMER_PRESCALER), NULL);
+      err_code = app_timer_start(m_battery_timer_id, APP_TIMER_TICKS(5000), NULL);
       APP_ERROR_CHECK(err_code);
       break;
 
@@ -70,12 +69,6 @@ on_bas_evt(ble_bas_t *bas, ble_bas_evt_t *evt)
       APP_ERROR_CHECK(err_code);
       break;
     }
-}
-
-void
-battery_service_ble_event_dispatch(ble_evt_t *ble_evt)
-{
-  ble_bas_on_ble_evt(&m_bas, ble_evt);
 }
 
 void

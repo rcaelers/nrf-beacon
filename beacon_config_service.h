@@ -34,6 +34,5 @@
 #define BEACON_CONFIG_UUID_IRK_CHAR                0x1005
 
 void beacon_config_service_init();
-void beacon_config_service_ble_event_dispatch(ble_evt_t *ble_evt);
 
 #endif // BEACON_CONFIG_SERVICE_H

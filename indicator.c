@@ -25,7 +25,6 @@
 #include "nrf_gpio.h"
 #include "app_timer.h"
 
-#define NRF_LOG_MODULE_NAME "APP"
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
 
@@ -65,12 +64,12 @@ indicator_process()
         {
         case INDICATOR_LED_OFF:
           led_off();
-          app_timer_start(m_timer_id, APP_TIMER_TICKS(indicator->duration, APP_TIMER_PRESCALER), NULL);
+          app_timer_start(m_timer_id, APP_TIMER_TICKS(indicator->duration), NULL);
           break;
 
         case INDICATOR_LED_ON:
           led_on();
-          app_timer_start(m_timer_id, APP_TIMER_TICKS(indicator->duration, APP_TIMER_PRESCALER), NULL);
+          app_timer_start(m_timer_id, APP_TIMER_TICKS(indicator->duration), NULL);
           break;
 
         case INDICATOR_DONE:

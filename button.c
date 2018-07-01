@@ -48,7 +48,7 @@ on_button_event_handler(uint8_t pin_no, uint8_t button_action)
       {
         m_count = 0;
 
-        uint32_t err_code = app_timer_start(m_button_timer_id, APP_TIMER_TICKS(1000, APP_TIMER_PRESCALER), NULL);
+        uint32_t err_code = app_timer_start(m_button_timer_id, APP_TIMER_TICKS(1000), NULL);
         APP_ERROR_CHECK(err_code);
 
         m_callback(BUTTON_EVENT_PRESS, m_count);
@@ -84,7 +84,7 @@ button_init(button_callback_t callback)
   uint32_t err_code = app_timer_create(&m_button_timer_id, APP_TIMER_MODE_REPEATED, on_button_timer);
   APP_ERROR_CHECK(err_code);
 
-  err_code = app_button_init(buttons_cfgs, sizeof(buttons_cfgs) / sizeof(app_button_cfg_t), APP_TIMER_TICKS(100, APP_TIMER_PRESCALER));
+  err_code = app_button_init(buttons_cfgs, sizeof(buttons_cfgs) / sizeof(app_button_cfg_t), APP_TIMER_TICKS(100));
   APP_ERROR_CHECK(err_code);
 
   err_code = app_button_enable();

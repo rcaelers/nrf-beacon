@@ -32,6 +32,4 @@ void beacon_start_advertising();
 void beacon_stop_advertising();
 bool beacon_is_connected();
 
-void beacon_ble_event_dispatch(ble_evt_t *ble_evt);
-
 #endif // BEACON_H

@@ -1,4 +1,4 @@
-// Copyright (C) 2017 Rob Caelers <rob.caelers@gmail.com>
+// Copyright (C) 2017, 2018 Rob Caelers <rob.caelers@gmail.com>
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -28,85 +28,60 @@
 #include "config.h"
 
 #include "app_timer.h"
-#include "app_timer_appsh.h"
-#include "softdevice_handler.h"
-#include "fstorage.h"
+#include "nrf_sdh.h"
+#include "nrf_sdh_ble.h"
+#include "nrf_pwr_mgmt.h"
 
-#define NRF_LOG_MODULE_NAME "APP"
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
+#include "nrf_log_default_backends.h"
 
-#if (NRF_SD_BLE_API_VERSION == 3)
-static const int NRF_BLE_MAX_MTU_SIZE = GATT_MTU_SIZE_DEFAULT;
-#endif
-
-#define CENTRAL_LINK_COUNT 0
-#define PERIPHERAL_LINK_COUNT 1
-
-#define NRF_CLOCK_LFCLKSRC                                            \
-  {   .source        = NRF_CLOCK_LF_SRC_XTAL,                         \
-      .rc_ctiv       = 0,                                             \
-      .rc_temp_ctiv  = 0,                                             \
-      .xtal_accuracy = NRF_CLOCK_LF_XTAL_ACCURACY_20_PPM}
-
-void
-assert_nrf_callback(uint16_t line_num, const uint8_t *file_name)
+static void
+log_init()
 {
-  app_error_handler(0xdeadbeef, line_num, file_name);
+  ret_code_t err_code = NRF_LOG_INIT(NULL);
+  APP_ERROR_CHECK(err_code);
+
+  NRF_LOG_DEFAULT_BACKENDS_INIT();
 }
 
 static void
 timers_init()
 {
-  APP_TIMER_INIT(APP_TIMER_PRESCALER, 5, false);
+  ret_code_t err_code = app_timer_init();
+  APP_ERROR_CHECK(err_code);
+}
+
+static void
+power_management_init()
+{
+  ret_code_t err_code;
+  err_code = nrf_pwr_mgmt_init();
+  APP_ERROR_CHECK(err_code);
 }
 
 static void
 power_manage()
 {
-  uint32_t err_code = sd_app_evt_wait();
-  APP_ERROR_CHECK(err_code);
-}
-
-static void
-on_ble_event_dispatch(ble_evt_t *ble_evt)
-{
-  beacon_ble_event_dispatch(ble_evt);
-}
-
-static void
-on_sys_event_dispatch(uint32_t sys_evt)
-{
-  fs_sys_event_handler(sys_evt);
+  if (NRF_LOG_PROCESS() == false)
+    {
+      nrf_pwr_mgmt_run();
+    }
 }
 
 static void
 softdevice_init()
 {
-  uint32_t err_code;
+  ret_code_t err_code;
 
-  nrf_clock_lf_cfg_t clock_lf_cfg = NRF_CLOCK_LFCLKSRC;
-  SOFTDEVICE_HANDLER_INIT(&clock_lf_cfg, NULL);
-
-  ble_enable_params_t ble_enable_params;
-  err_code = softdevice_enable_get_default_config(CENTRAL_LINK_COUNT, PERIPHERAL_LINK_COUNT, &ble_enable_params);
+  err_code = nrf_sdh_enable_request();
   APP_ERROR_CHECK(err_code);
 
-  CHECK_RAM_START_ADDR(CENTRAL_LINK_COUNT, PERIPHERAL_LINK_COUNT);
-
-  ble_enable_params.gatts_enable_params.service_changed = IS_SRVC_CHANGED_CHARACT_PRESENT;
-
-#if (NRF_SD_BLE_API_VERSION == 3)
-  ble_enable_params.gatt_enable_params.att_mtu = NRF_BLE_MAX_MTU_SIZE;
-#endif
-
-  err_code = softdevice_enable(&ble_enable_params);
+  uint32_t ram_start = 0;
+  err_code = nrf_sdh_ble_default_cfg_set(APP_BLE_CONN_CFG_TAG, &ram_start);
   APP_ERROR_CHECK(err_code);
 
-  err_code = softdevice_ble_evt_handler_set(on_ble_event_dispatch);
-  APP_ERROR_CHECK(err_code);
-
-  err_code = softdevice_sys_evt_handler_set(on_sys_event_dispatch);
+  err_code = nrf_sdh_ble_enable(&ram_start);
   APP_ERROR_CHECK(err_code);
 }
 
@@ -154,6 +129,12 @@ on_button_callback(button_event_t event, int duration)
 }
 
 void
+assert_nrf_callback(uint16_t line_num, const uint8_t *file_name)
+{
+  app_error_handler(0xdeadbeef, line_num, file_name);
+}
+
+void
 app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
 {
   NRF_LOG_ERROR("Fatal\n");
@@ -186,13 +167,13 @@ app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info)
 int
 main()
 {
-  uint32_t err_code = NRF_LOG_INIT(NULL);
-  APP_ERROR_CHECK(err_code);
+  log_init();
+  NRF_LOG_INFO("START\n");
 
   timers_init();
   button_init(on_button_callback);
   indicator_init();
-
+  power_management_init();
   softdevice_init();
 
   beacon_config_init();
@@ -204,9 +185,6 @@ main()
 
   for (;;)
     {
-      if (NRF_LOG_PROCESS() == false)
-        {
-          power_manage();
-        }
+      power_manage();
     }
 }

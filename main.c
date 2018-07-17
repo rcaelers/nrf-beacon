@@ -31,6 +31,7 @@
 #include "nrf_sdh.h"
 #include "nrf_sdh_ble.h"
 #include "nrf_pwr_mgmt.h"
+#include "peer_manager.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -95,6 +96,7 @@ on_button_callback(button_event_t event, int duration)
       if (duration == 2 && !beacon_is_connected())
       {
         indicator_start(flash_twice_fast_indicator);
+        NRF_LOG_DEBUG("Release to become connectable\n");
       }
       else if (duration == 5)
       {
@@ -103,10 +105,12 @@ on_button_callback(button_event_t event, int duration)
       else if (duration == 10)
       {
         indicator_start(flash_four_times_fast_indicator);
+        NRF_LOG_DEBUG("Release to reset config to default\n");
       }
       else if (duration == 20)
       {
         indicator_start(flash_four_times_fast_indicator);
+        NRF_LOG_DEBUG("Release to reset board\n");
       }
       break;
 
@@ -119,6 +123,12 @@ on_button_callback(button_event_t event, int duration)
       else if (duration >= 10)
       {
         beacon_config_reset();
+
+        ret_code_t err_code;
+
+        NRF_LOG_INFO("Erase bonds!");
+        err_code = pm_peers_delete();
+        APP_ERROR_CHECK(err_code);
       }
       else if (duration >= 2 && duration < 5 && !beacon_is_connected())
       {

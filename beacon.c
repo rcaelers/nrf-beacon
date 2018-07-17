@@ -22,45 +22,47 @@
 
 #include "beacon.h"
 
-#include "indicator.h"
 #include "battery_service.h"
-#include "beacon_config_service.h"
 #include "beacon_config.h"
+#include "beacon_config_service.h"
 #include "config.h"
+#include "dfu.h"
+#include "indicator.h"
 
 #include "app_timer.h"
 #include "ble_advdata.h"
 #include "ble_conn_params.h"
-
+#include "ble_conn_state.h"
+#include "fds.h"
+#include "nrf_ble_gatt.h"
+#include "nrf_ble_gatt.h"
+#include "nrf_ble_qwr.h"
+#include "nrf_log.h"
 #include "nrf_sdh.h"
 #include "nrf_sdh_ble.h"
-#include "nrf_ble_gatt.h"
-#include "nrf_log.h"
-
-static const int APP_FEATURE_NOT_SUPPORTED = BLE_GATT_STATUS_ATTERR_APP_BEGIN + 2;
+#include "peer_manager.h"
 
 static ble_gap_sec_params_t m_sec_params;
-static ble_gap_sec_keyset_t m_sec_keyset;
-
 static uint16_t m_connection_handle = BLE_CONN_HANDLE_INVALID;
 static uint8_t m_adv_handle = BLE_GAP_ADV_SET_HANDLE_NOT_SET;
 static uint8_t m_enc_advdata[BLE_GAP_ADV_SET_DATA_SIZE_MAX];
 static uint8_t m_enc_scan_response_data[BLE_GAP_ADV_SET_DATA_SIZE_MAX];
+static bool m_connectable = false;
 
 NRF_BLE_GATT_DEF(m_gatt);
+NRF_BLE_QWR_DEF(m_qwr);
 
 static ble_gap_adv_data_t m_adv_data =
   {
    .adv_data =
    {
     .p_data = m_enc_advdata,
-    .len    = BLE_GAP_ADV_SET_DATA_SIZE_MAX
+    .len = BLE_GAP_ADV_SET_DATA_SIZE_MAX
    },
    .scan_rsp_data =
    {
     .p_data = m_enc_scan_response_data,
-    .len    = BLE_GAP_ADV_SET_DATA_SIZE_MAX
-
+    .len = BLE_GAP_ADV_SET_DATA_SIZE_MAX
    }
   };
 
@@ -77,6 +79,9 @@ on_ble_event(ble_evt_t const *ble_evt, void *context)
       m_connection_handle = ble_evt->evt.gap_evt.conn_handle;
       beacon_start_advertising_non_connectable();
       indicator_start_loop(flash_three_times_indicator);
+
+      err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_connection_handle);
+      APP_ERROR_CHECK(err_code);
 
       err_code = sd_ble_gap_authenticate(m_connection_handle, &m_sec_params);
       APP_ERROR_CHECK(err_code);
@@ -103,7 +108,7 @@ on_ble_event(ble_evt_t const *ble_evt, void *context)
       break;
 
     case BLE_GAP_EVT_ADV_SET_TERMINATED:
-      NRF_LOG_DEBUG("Adv timeout.");
+      NRF_LOG_DEBUG("Advertising timeout.");
       if (!beacon_is_connected())
         {
           beacon_start_advertising();
@@ -111,83 +116,15 @@ on_ble_event(ble_evt_t const *ble_evt, void *context)
       break;
 
     case BLE_GATTC_EVT_TIMEOUT:
+      NRF_LOG_DEBUG("GATT client timeout.");
       err_code = sd_ble_gap_disconnect(ble_evt->evt.gattc_evt.conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
       APP_ERROR_CHECK(err_code);
       break;
 
     case BLE_GATTS_EVT_TIMEOUT:
+      NRF_LOG_DEBUG("GATT server timeout.");
       err_code = sd_ble_gap_disconnect(ble_evt->evt.gatts_evt.conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
       APP_ERROR_CHECK(err_code);
-      break;
-
-    case BLE_EVT_USER_MEM_REQUEST:
-      err_code = sd_ble_user_mem_reply(ble_evt->evt.gattc_evt.conn_handle, NULL);
-      APP_ERROR_CHECK(err_code);
-      break;
-
-    case BLE_GATTS_EVT_RW_AUTHORIZE_REQUEST:
-      {
-        ble_gatts_evt_rw_authorize_request_t req = ble_evt->evt.gatts_evt.params.authorize_request;
-
-        if (req.type != BLE_GATTS_AUTHORIZE_TYPE_INVALID)
-          {
-            if ((req.request.write.op == BLE_GATTS_OP_PREP_WRITE_REQ)     ||
-                (req.request.write.op == BLE_GATTS_OP_EXEC_WRITE_REQ_NOW) ||
-                (req.request.write.op == BLE_GATTS_OP_EXEC_WRITE_REQ_CANCEL))
-              {
-                ble_gatts_rw_authorize_reply_params_t auth_reply;
-
-                if (req.type == BLE_GATTS_AUTHORIZE_TYPE_WRITE)
-                  {
-                    auth_reply.type = BLE_GATTS_AUTHORIZE_TYPE_WRITE;
-                  }
-                else
-                  {
-                    auth_reply.type = BLE_GATTS_AUTHORIZE_TYPE_READ;
-                  }
-                auth_reply.params.write.gatt_status = APP_FEATURE_NOT_SUPPORTED;
-                err_code = sd_ble_gatts_rw_authorize_reply(ble_evt->evt.gatts_evt.conn_handle, &auth_reply);
-                APP_ERROR_CHECK(err_code);
-              }
-          }
-      }
-      break;
-
-    case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
-      NRF_LOG_DEBUG("SEC PARAMS REQUEST.\r\n");
-      err_code = sd_ble_gap_sec_params_reply(ble_evt->evt.common_evt.conn_handle,
-                                             BLE_GAP_SEC_STATUS_SUCCESS,
-                                             &m_sec_params,
-                                             &m_sec_keyset);
-      APP_ERROR_CHECK(err_code);
-      break;
-
-    case BLE_GAP_EVT_SEC_INFO_REQUEST:
-      NRF_LOG_DEBUG("SEC INFO REQUEST.\r\n");
-      if (m_sec_keyset.keys_own.p_enc_key != NULL)
-        {
-          ble_gap_enc_info_t *enc_info = &m_sec_keyset.keys_own.p_enc_key->enc_info;
-          err_code = sd_ble_gap_sec_info_reply(m_connection_handle, enc_info, NULL, NULL);
-          APP_ERROR_CHECK(err_code);
-        }
-      else
-        {
-          err_code = sd_ble_gap_sec_info_reply(m_connection_handle, NULL, NULL, NULL);
-          APP_ERROR_CHECK(err_code);
-        }
-      break;
-
-    case BLE_GAP_EVT_AUTH_STATUS:
-      NRF_LOG_DEBUG("BLE_GAP_EVT_AUTH_STATUS: status=0x%x bond=0x%x lv4: %d lv2: %d kdist_own:0x%x kdist_peer:0x%x\r\n",
-                   ble_evt->evt.gap_evt.params.auth_status.auth_status,
-                   ble_evt->evt.gap_evt.params.auth_status.bonded,
-                   ble_evt->evt.gap_evt.params.auth_status.sm1_levels.lv4,
-                   ble_evt->evt.gap_evt.params.auth_status.sm1_levels.lv2,
-                   *((uint8_t *)&ble_evt->evt.gap_evt.params.auth_status.kdist_own),
-                   *((uint8_t *)&ble_evt->evt.gap_evt.params.auth_status.kdist_peer));
-      break;
-
-    case BLE_GAP_EVT_CONN_SEC_UPDATE:
       break;
 
     case BLE_GATTS_EVT_SYS_ATTR_MISSING:
@@ -201,22 +138,132 @@ on_ble_event(ble_evt_t const *ble_evt, void *context)
 }
 
 static void
+pm_evt_handler(pm_evt_t const * p_evt)
+{
+  ret_code_t err_code;
+
+  switch (p_evt->evt_id)
+    {
+    case PM_EVT_BONDED_PEER_CONNECTED:
+      {
+        NRF_LOG_INFO("Connected to a previously bonded device.");
+      }
+      break;
+
+    case PM_EVT_CONN_SEC_SUCCEEDED:
+      {
+        NRF_LOG_INFO("Connection secured: role: %d, conn_handle: 0x%x, procedure: %d.",
+                     ble_conn_state_role(p_evt->conn_handle),
+                     p_evt->conn_handle,
+                     p_evt->params.conn_sec_succeeded.procedure);
+      }
+      break;
+
+    case PM_EVT_CONN_SEC_FAILED:
+      {
+      }
+      break;
+
+    case PM_EVT_CONN_SEC_CONFIG_REQ:
+      {
+        // Reject pairing request from an already bonded peer.
+        pm_conn_sec_config_t conn_sec_config = {.allow_repairing = false};
+        pm_conn_sec_config_reply(p_evt->conn_handle, &conn_sec_config);
+      }
+      break;
+
+    case PM_EVT_STORAGE_FULL:
+      {
+        // Run garbage collection on the flash.
+        err_code = fds_gc();
+        if (err_code == FDS_ERR_NO_SPACE_IN_QUEUES)
+          {
+            // Retry.
+          }
+        else
+          {
+            APP_ERROR_CHECK(err_code);
+          }
+      } break;
+
+    case PM_EVT_PEERS_DELETE_SUCCEEDED:
+      {
+        beacon_start_advertising();
+      }
+      break;
+
+    case PM_EVT_PEER_DATA_UPDATE_FAILED:
+      {
+        APP_ERROR_CHECK(p_evt->params.peer_data_update_failed.error);
+      }
+      break;
+
+    case PM_EVT_PEER_DELETE_FAILED:
+      {
+        APP_ERROR_CHECK(p_evt->params.peer_delete_failed.error);
+      }
+      break;
+
+    case PM_EVT_PEERS_DELETE_FAILED:
+      {
+        APP_ERROR_CHECK(p_evt->params.peers_delete_failed_evt.error);
+      }
+      break;
+
+    case PM_EVT_ERROR_UNEXPECTED:
+      {
+        APP_ERROR_CHECK(p_evt->params.error_unexpected.error);
+      }
+      break;
+
+    case PM_EVT_CONN_SEC_START:
+    case PM_EVT_PEER_DATA_UPDATE_SUCCEEDED:
+    case PM_EVT_PEER_DELETE_SUCCEEDED:
+    case PM_EVT_LOCAL_DB_CACHE_APPLIED:
+    case PM_EVT_LOCAL_DB_CACHE_APPLY_FAILED:
+      // This can happen when the local DB has changed.
+    case PM_EVT_SERVICE_CHANGED_IND_SENT:
+    case PM_EVT_SERVICE_CHANGED_IND_CONFIRMED:
+    default:
+      break;
+    }
+}
+
+static void
+nrf_qwr_error_handler(uint32_t nrf_error)
+{
+  APP_ERROR_HANDLER(nrf_error);
+}
+
+static void
 gap_privacy_init()
 {
   beacon_config_t *config = beacon_config_get();
-  if (config->interval > 0)
-  {
-    ble_gap_irk_t irk = { 0 };
-    memcpy(&irk.irk, config->irk, BLE_GAP_SEC_KEY_LEN);
+  if (config->interval > 0 && !m_connectable)
+    {
+      ble_gap_irk_t irk = { 0 };
+      memcpy(&irk.irk, config->irk, BLE_GAP_SEC_KEY_LEN);
 
-    ble_gap_privacy_params_t ble_gap_privacy_params = {0};
-    ble_gap_privacy_params.privacy_mode = BLE_GAP_PRIVACY_MODE_DEVICE_PRIVACY;
-    ble_gap_privacy_params.private_addr_type = BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_RESOLVABLE;
-    ble_gap_privacy_params.private_addr_cycle_s = config->interval * 60;
-    ble_gap_privacy_params.p_device_irk = &irk;
-    uint32_t err_code = sd_ble_gap_privacy_set(&ble_gap_privacy_params);
-    APP_ERROR_CHECK(err_code);
-  }
+      ble_gap_privacy_params_t ble_gap_privacy_params = {0};
+      ble_gap_privacy_params.privacy_mode = BLE_GAP_PRIVACY_MODE_DEVICE_PRIVACY;
+      ble_gap_privacy_params.private_addr_type = BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_RESOLVABLE;
+      ble_gap_privacy_params.private_addr_cycle_s = config->interval * 60;
+      ble_gap_privacy_params.p_device_irk = &irk;
+
+      uint32_t err_code = sd_ble_gap_privacy_set(&ble_gap_privacy_params);
+      APP_ERROR_CHECK(err_code);
+    }
+  else
+    {
+      ble_gap_privacy_params_t ble_gap_privacy_params = {0};
+      ble_gap_privacy_params.privacy_mode = BLE_GAP_PRIVACY_MODE_OFF;
+      ble_gap_privacy_params.private_addr_type = BLE_GAP_ADDR_TYPE_PUBLIC;
+      ble_gap_privacy_params.private_addr_cycle_s = BLE_GAP_DEFAULT_PRIVATE_ADDR_CYCLE_INTERVAL_S;
+      ble_gap_privacy_params.p_device_irk = NULL;
+
+      uint32_t err_code = sd_ble_gap_privacy_set(&ble_gap_privacy_params);
+      APP_ERROR_CHECK(err_code);
+    }
 }
 
 static void
@@ -226,41 +273,41 @@ gap_txpower_init()
   int8_t power = config->power;
 
   if (power <= -40)
-  {
-    power = -40;
-  }
+    {
+      power = -40;
+    }
   else if (power <= -30)
-  {
-    power = -30;
-  }
+    {
+      power = -30;
+    }
   else if (power <= -20)
-  {
-    power = -20;
-  }
+    {
+      power = -20;
+    }
   else if (power <= -16)
-  {
-    power = -16;
-  }
+    {
+      power = -16;
+    }
   else if (power <= -12)
-  {
-    power = -12;
-  }
+    {
+      power = -12;
+    }
   else if (power <= -8)
-  {
-    power = -8;
-  }
+    {
+      power = -8;
+    }
   else if (power <= -4)
-  {
-    power = -4;
-  }
+    {
+      power = -4;
+    }
   else if (power <= 0)
-  {
-    power = 0;
-  }
+    {
+      power = 0;
+    }
   else
-  {
-    power = 4;
-  }
+    {
+      power = 4;
+    }
 
   ret_code_t err_code = sd_ble_gap_tx_power_set(BLE_GAP_TX_POWER_ROLE_ADV, m_adv_handle, power);
   APP_ERROR_CHECK(err_code);
@@ -273,7 +320,7 @@ gap_pin_init()
 
   ble_opt_t ble_opt;
   ble_opt.gap_opt.passkey.p_passkey = config->pin;
-  uint32_t err_code = sd_ble_opt_set(BLE_GAP_OPT_PASSKEY, &ble_opt);  
+  uint32_t err_code = sd_ble_opt_set(BLE_GAP_OPT_PASSKEY, &ble_opt);
   APP_ERROR_CHECK(err_code);
 }
 
@@ -296,7 +343,7 @@ gap_params_init()
   gap_conn_params.min_conn_interval = MSEC_TO_UNITS(100, UNIT_1_25_MS);
   gap_conn_params.max_conn_interval = MSEC_TO_UNITS(200, UNIT_1_25_MS);
   gap_conn_params.slave_latency = 0;
-  gap_conn_params.conn_sup_timeout  = MSEC_TO_UNITS(4000, UNIT_10_MS);
+  gap_conn_params.conn_sup_timeout = MSEC_TO_UNITS(4000, UNIT_10_MS);
 
   err_code = sd_ble_gap_ppcp_set(&gap_conn_params);
   APP_ERROR_CHECK(err_code);
@@ -305,26 +352,39 @@ gap_params_init()
   gap_pin_init();
 }
 
-static void gatt_init(void)
+static void
+gatt_init()
 {
   ret_code_t err_code = nrf_ble_gatt_init(&m_gatt, NULL);
   APP_ERROR_CHECK(err_code);
 }
 
 static void
+qwr_service_init()
+{
+  nrf_ble_qwr_init_t qwr_init = {0};
+  uint32_t err_code = NRF_SUCCESS;
+
+  qwr_init.error_handler = nrf_qwr_error_handler;
+
+  err_code = nrf_ble_qwr_init(&m_qwr, &qwr_init);
+  APP_ERROR_CHECK(err_code);
+}
+
+static void
 advertising_data_init()
 {
-  ret_code_t    err_code;
+  ret_code_t err_code;
   ble_advdata_t advdata;
   ble_advdata_t srdata;
 
   memset(&advdata, 0, sizeof(advdata));
-  advdata.name_type          = BLE_ADVDATA_NO_NAME;
+  advdata.name_type = BLE_ADVDATA_NO_NAME;
   advdata.include_appearance = true;
-  advdata.flags              = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
+  advdata.flags = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
 
   memset(&srdata, 0, sizeof(srdata));
-  srdata.name_type          = BLE_ADVDATA_FULL_NAME;
+  srdata.name_type = BLE_ADVDATA_FULL_NAME;
 
   err_code = ble_advdata_encode(&advdata, m_adv_data.adv_data.p_data, &m_adv_data.adv_data.len);
   APP_ERROR_CHECK(err_code);
@@ -338,6 +398,8 @@ services_init()
 {
   battery_service_init();
   beacon_config_service_init();
+  qwr_service_init();
+  dfu_services_init();
 }
 
 static void
@@ -375,26 +437,40 @@ conn_params_init()
 }
 
 static void
-sec_param_init()
+peer_manager_init()
 {
-  memset(&m_sec_params, 0, sizeof(m_sec_params));
+  ble_gap_sec_params_t sec_param;
+  ret_code_t           err_code;
 
-  // m_sec_params.bond           = 0;
-  m_sec_params.mitm           = 1;
-  // m_sec_params.lesc           = 0;
-  // m_sec_params.keypress       = 0;
-  m_sec_params.io_caps        = BLE_GAP_IO_CAPS_DISPLAY_ONLY;
-  // m_sec_params.oob            = 0;
-  m_sec_params.min_key_size   = 7;
-  m_sec_params.max_key_size   = 16;
+  err_code = pm_init();
+  APP_ERROR_CHECK(err_code);
 
-  memset(&m_sec_keyset, 0, sizeof(m_sec_keyset));
+  memset(&sec_param, 0, sizeof(ble_gap_sec_params_t));
+
+  sec_param.bond           = 1;
+  sec_param.mitm           = 1;
+  sec_param.lesc           = 0;
+  sec_param.keypress       = 0;
+  sec_param.io_caps        = BLE_GAP_IO_CAPS_DISPLAY_ONLY;
+  sec_param.oob            = 0;
+  sec_param.min_key_size   = 7;
+  sec_param.max_key_size   = 16;
+  sec_param.kdist_own.enc  = 1;
+  sec_param.kdist_own.id   = 1;
+  sec_param.kdist_peer.enc = 1;
+  sec_param.kdist_peer.id  = 1;
+
+  err_code = pm_sec_params_set(&sec_param);
+  APP_ERROR_CHECK(err_code);
+
+  err_code = pm_register(pm_evt_handler);
+  APP_ERROR_CHECK(err_code);
 }
 
 void
 beacon_init()
 {
-  sec_param_init();
+  peer_manager_init();
   gap_params_init();
   gatt_init();
   advertising_data_init();
@@ -410,6 +486,8 @@ beacon_start_advertising_connectable()
   beacon_config_t *config = beacon_config_get();
 
   beacon_stop_advertising();
+  m_connectable = true;
+  gap_privacy_init();
 
   ble_gap_adv_params_t adv_params;
   memset(&adv_params, 0, sizeof(adv_params));
@@ -428,9 +506,9 @@ beacon_start_advertising_connectable()
   gap_txpower_init();
 
   if (! config->remain_connectable)
-  {
-    indicator_start_loop(flash_once_indicator);
-  }
+    {
+      indicator_start_loop(flash_once_indicator);
+    }
 }
 
 void
@@ -439,6 +517,8 @@ beacon_start_advertising_non_connectable()
   beacon_config_t *config = beacon_config_get();
 
   beacon_stop_advertising();
+  m_connectable = false;
+  gap_privacy_init();
 
   ble_gap_adv_params_t adv_params;
   memset(&adv_params, 0, sizeof(adv_params));
@@ -450,6 +530,7 @@ beacon_start_advertising_non_connectable()
   adv_params.interval        = MSEC_TO_UNITS(config->adv_interval, UNIT_0_625_MS);
 
   uint32_t err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &adv_params);
+
   APP_ERROR_CHECK(err_code);
 
   err_code = sd_ble_gap_adv_start(m_adv_handle, APP_BLE_CONN_CFG_TAG);
@@ -465,13 +546,13 @@ beacon_start_advertising()
 {
   beacon_config_t *config = beacon_config_get();
   if (config->remain_connectable)
-  {
-    beacon_start_advertising_connectable();
-  }
+    {
+      beacon_start_advertising_connectable();
+    }
   else
-  {
-    beacon_start_advertising_non_connectable();
-  }
+    {
+      beacon_start_advertising_non_connectable();
+    }
 }
 
 void

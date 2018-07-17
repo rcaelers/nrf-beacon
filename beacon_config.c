@@ -19,22 +19,20 @@
 // THE SOFTWARE.
 
 #include <stdint.h>
+#include <string.h>
 
 #include "beacon_config.h"
 #include "config.h"
 
 #include "app_error.h"
-#include "nrf_fstorage.h"
-#include "nrf_fstorage_sd.h"
+#include "fds.h"
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
-#include "nrf_pwr_mgmt.h"
 
-#include <string.h>
+static const uint32_t MAGIC = 0x7F5849B1;
 
-static const uint32_t MAGIC = 0x7F38A9B1;
-static const uint32_t PHY_PAGES = 2;
-static const uint32_t PHY_PAGE_SIZE = 1024;
+#define CONFIG_FILE     (0xF010)
+#define CONFIG_REC_KEY  (0x7010)
 
 typedef struct
 {
@@ -43,28 +41,45 @@ typedef struct
   beacon_config_t config;
 } storage_t;
 
-static storage_t m_storage;
-
-static void fstorage_evt_handler(nrf_fstorage_evt_t *evt);
-
-NRF_FSTORAGE_DEF(nrf_fstorage_t m_fs) =
+static storage_t m_storage =
   {
-   .evt_handler = fstorage_evt_handler,
+   .magic = 0,
+   .version = 0,
+   .config = {},
   };
 
-static
-void fstorage_evt_handler(nrf_fstorage_evt_t *evt)
+static fds_record_t const m_record =
+  {
+   .file_id           = CONFIG_FILE,
+   .key               = CONFIG_REC_KEY,
+   .data.p_data       = &m_storage,
+   .data.length_words = (sizeof(m_storage) + 3) / sizeof(uint32_t),
+  };
+
+static bool volatile m_fds_initialized;
+
+static void
+fds_evt_handler(fds_evt_t const * evt)
 {
-  if (evt->result != NRF_SUCCESS)
-    {
-      return;
-    }
+  NRF_LOG_DEBUG("Event: %d received (%d)", evt->id, evt->result);
 
   switch (evt->id)
     {
-    case NRF_FSTORAGE_EVT_WRITE_RESULT:
+    case FDS_EVT_INIT:
+      if (evt->result == FDS_SUCCESS)
+        {
+          m_fds_initialized = true;
+        }
+      break;
+
+    case FDS_EVT_WRITE:
       {
-        NVIC_SystemReset();
+        if (evt->result == FDS_SUCCESS)
+          {
+            NRF_LOG_INFO("Record ID:\t0x%04x",  evt->write.record_id);
+            NRF_LOG_INFO("File ID:\t0x%04x",    evt->write.file_id);
+            NRF_LOG_INFO("Record key:\t0x%04x", evt->write.record_key);
+          }
       }
       break;
 
@@ -90,65 +105,82 @@ beacon_config_set_to_defaults()
   memcpy(&m_storage.config.irk, irk, BLE_GAP_SEC_KEY_LEN);
 }
 
-static void
-wait_for_flash_ready()
-{
-  while (nrf_fstorage_is_busy(&m_fs))
-    {
-      if (NRF_LOG_PROCESS() == false)
-        {
-          nrf_pwr_mgmt_run();
-        }
-    }
-}
-
-static uint32_t
-flash_end_addr()
-{
-  uint32_t const bootloader_addr = NRF_UICR->NRFFW[0];
-  uint32_t const page_sz         = NRF_FICR->CODEPAGESIZE;
-  uint32_t const code_sz         = NRF_FICR->CODESIZE;
-
-  NRF_LOG_INFO("addrs %x %d %d.", bootloader_addr, page_sz, code_sz);
-
-  return (bootloader_addr != 0xFFFFFFFF) ? bootloader_addr : (code_sz * page_sz);
-}
-
-static void
-flash_bounds_set()
-{
-  uint32_t flash_size  = (PHY_PAGES * PHY_PAGE_SIZE * sizeof(uint32_t));
-  m_fs.end_addr   = flash_end_addr();
-  m_fs.start_addr = m_fs.end_addr - flash_size;
-}
-
 void
 beacon_config_save()
 {
-  uint32_t err_code = nrf_fstorage_erase(&m_fs, m_fs.start_addr, PHY_PAGES, NULL);
-  APP_ERROR_CHECK(err_code);
-  wait_for_flash_ready(&m_fs);
+  ret_code_t rc;
+  fds_record_desc_t desc = {0};
+  fds_find_token_t tok = {0};
 
-  err_code = nrf_fstorage_write(&m_fs, m_fs.start_addr, &m_storage, sizeof(m_storage), NULL);
-  APP_ERROR_CHECK(err_code);
-  wait_for_flash_ready(&m_fs);
+  rc = fds_record_find(CONFIG_FILE, CONFIG_REC_KEY, &desc, &tok);
+
+  if (rc == FDS_SUCCESS)
+    {
+      rc = fds_record_update(&desc, &m_record);
+      APP_ERROR_CHECK(rc);
+    }
+}
+
+static void
+wait_for_fds_ready()
+{
+  while (!m_fds_initialized)
+    {
+      (void) sd_app_evt_wait();
+    }
 }
 
 void
 beacon_config_init()
 {
-  flash_bounds_set();
+  ret_code_t rc;
 
-  uint32_t err_code = nrf_fstorage_init(&m_fs, &nrf_fstorage_sd, NULL);
-  APP_ERROR_CHECK(err_code);
+  (void) fds_register(fds_evt_handler);
 
-  err_code = nrf_fstorage_read(&m_fs, m_fs.start_addr, &m_storage, sizeof(m_storage));
-  APP_ERROR_CHECK(err_code);
-  wait_for_flash_ready(&m_fs);
+  rc = fds_init();
+  APP_ERROR_CHECK(rc);
 
-  if (m_storage.magic != MAGIC || m_storage.version != BEACON_CONFIG_VERSION)
+  wait_for_fds_ready();
+
+  fds_record_desc_t desc = {0};
+  fds_find_token_t tok  = {0};
+
+  rc = fds_record_find(CONFIG_FILE, CONFIG_REC_KEY, &desc, &tok);
+  if (rc == FDS_SUCCESS)
     {
-      beacon_config_reset();
+      fds_flash_record_t record = {0};
+
+      rc = fds_record_open(&desc, &record);
+      APP_ERROR_CHECK(rc);
+
+      memcpy(&m_storage, record.p_data, sizeof(storage_t));
+
+      NRF_LOG_INFO("Config file found.");
+      NRF_LOG_INFO("Magic = %d", m_storage.magic);
+      NRF_LOG_INFO("version = %d", m_storage.version);
+      NRF_LOG_INFO("Interval = %d", m_storage.config.interval);
+      NRF_LOG_INFO("Remain connectable = %d", m_storage.config.remain_connectable);
+      NRF_LOG_INFO("Interval = %d", m_storage.config.adv_interval);
+      NRF_LOG_INFO("Power = %d", m_storage.config.power);
+      NRF_LOG_INFO("Pin = %s", m_storage.config.pin);
+
+      rc = fds_record_close(&desc);
+      APP_ERROR_CHECK(rc);
+
+      if (m_storage.magic != MAGIC || m_storage.version != BEACON_CONFIG_VERSION)
+        {
+          NRF_LOG_INFO("Magic/Version incorrect resetting.");
+          beacon_config_set_to_defaults();
+
+          rc = fds_record_update(&desc, &m_record);
+          APP_ERROR_CHECK(rc);
+        }
+    }
+  else
+    {
+      beacon_config_set_to_defaults();
+      rc = fds_record_write(&desc, &m_record);
+      APP_ERROR_CHECK(rc);
     }
 }
 

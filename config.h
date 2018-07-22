@@ -45,9 +45,9 @@
 #define LED_INVERT  1
 #define BUTTON_PIN  6
 #elif defined(BOARD_HOLYIOT)
-#define LED_PIN     7
-#define LED_INVERT  1
-#define BUTTON_PIN  6
+#define LED_PIN     29
+#define LED_INVERT  0
+#define BUTTON_PIN  28
 #else
 #error Unknown board
 #endif

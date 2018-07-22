@@ -244,24 +244,25 @@ gap_privacy_init()
       ble_gap_irk_t irk = { 0 };
       memcpy(&irk.irk, config->irk, BLE_GAP_SEC_KEY_LEN);
 
-      ble_gap_privacy_params_t ble_gap_privacy_params = {0};
-      ble_gap_privacy_params.privacy_mode = BLE_GAP_PRIVACY_MODE_DEVICE_PRIVACY;
-      ble_gap_privacy_params.private_addr_type = BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_RESOLVABLE;
-      ble_gap_privacy_params.private_addr_cycle_s = config->interval * 60;
-      ble_gap_privacy_params.p_device_irk = &irk;
+      pm_privacy_params_t privacy_params = {0};
+      privacy_params.privacy_mode = BLE_GAP_PRIVACY_MODE_DEVICE_PRIVACY;
+      privacy_params.private_addr_type = BLE_GAP_ADDR_TYPE_RANDOM_PRIVATE_RESOLVABLE;
+      privacy_params.private_addr_cycle_s = config->interval * 60;
+      privacy_params.p_device_irk = &irk;
 
-      uint32_t err_code = sd_ble_gap_privacy_set(&ble_gap_privacy_params);
+      uint32_t err_code = pm_privacy_set(&privacy_params);
       APP_ERROR_CHECK(err_code);
     }
   else
     {
-      ble_gap_privacy_params_t ble_gap_privacy_params = {0};
-      ble_gap_privacy_params.privacy_mode = BLE_GAP_PRIVACY_MODE_OFF;
-      ble_gap_privacy_params.private_addr_type = BLE_GAP_ADDR_TYPE_PUBLIC;
-      ble_gap_privacy_params.private_addr_cycle_s = BLE_GAP_DEFAULT_PRIVATE_ADDR_CYCLE_INTERVAL_S;
-      ble_gap_privacy_params.p_device_irk = NULL;
+      pm_privacy_params_t privacy_params = {0};
+      privacy_params.privacy_mode = BLE_GAP_PRIVACY_MODE_OFF;
 
-      uint32_t err_code = sd_ble_gap_privacy_set(&ble_gap_privacy_params);
+      ble_gap_addr_t dev_addr = {0};
+      dev_addr.addr_type = BLE_GAP_ADDR_TYPE_RANDOM_STATIC;
+      uint32_t err_code = pm_id_addr_set(&dev_addr);
+
+      err_code = pm_privacy_set(&privacy_params);
       APP_ERROR_CHECK(err_code);
     }
 }

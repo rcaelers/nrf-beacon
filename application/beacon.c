@@ -97,9 +97,6 @@ on_ble_event(ble_evt_t const *ble_evt, void *context)
 
       err_code = nrf_ble_qwr_conn_handle_assign(&m_qwr, m_connection_handle);
       APP_ERROR_CHECK(err_code);
-
-      err_code = sd_ble_gap_authenticate(m_connection_handle, &m_sec_params);
-      APP_ERROR_CHECK(err_code);
       break;
 
     case BLE_GAP_EVT_DISCONNECTED:

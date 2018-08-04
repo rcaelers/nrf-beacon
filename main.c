@@ -193,6 +193,7 @@ main()
 
   indicator_start(flash_three_times_indicator);
 
+  NRF_LOG_INFO("main loop...\n");
   for (;;)
     {
       power_manage();

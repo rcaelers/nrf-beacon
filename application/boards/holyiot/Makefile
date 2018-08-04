@@ -21,7 +21,7 @@ SRC_FILES += \
   $(PROJ_DIR)/beacon_config_service.c \
   $(PROJ_DIR)/button.c \
   $(PROJ_DIR)/dfu.c \
-  $(PROJ_DIR)/indicator.c \
+  $(PROJ_DIR)/../common/indicator.c \
   $(PROJ_DIR)/main.c \
   $(SDK_ROOT)/components/ble/ble_services/ble_bas/ble_bas.c \
   $(SDK_ROOT)/components/ble/ble_services/ble_dfu/ble_dfu.c \
@@ -94,6 +94,8 @@ SRC_FILES += \
 
 # Include folders common to all targets
 INC_FOLDERS += \
+  $(PROJ_DIR) \
+  $(PROJ_DIR)/../common \
   $(PROJ_DIR)/boards/holyiot \
   $(SDK_ROOT)/components \
   $(SDK_ROOT)/components/ble/ble_advertising \

@@ -1,1 +1,1 @@
-boards/sparkfun/Makefile
+boards/holyiot/Makefile

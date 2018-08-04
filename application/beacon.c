@@ -106,8 +106,9 @@ on_ble_event(ble_evt_t const *ble_evt, void *context)
       NRF_LOG_INFO("Disconnected.\r\n");
 
       m_connection_handle = BLE_CONN_HANDLE_INVALID;
-      beacon_start_advertising_connectable();
+
       indicator_stop();
+      beacon_start_advertising();
       break;
 
     case BLE_GAP_EVT_PHY_UPDATE_REQUEST:

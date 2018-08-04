@@ -94,46 +94,58 @@ on_button_callback(button_event_t event, int duration)
     case BUTTON_EVENT_PRESS:
       NRF_LOG_DEBUG("Button press\n");
       if (duration == 2 && !beacon_is_connected())
-      {
-        indicator_start(flash_twice_fast_indicator);
-        NRF_LOG_DEBUG("Release to become connectable\n");
-      }
+        {
+          indicator_start(flash_twice_fast_indicator);
+          NRF_LOG_DEBUG("Release to become connectable\n");
+        }
       else if (duration == 5)
-      {
-        indicator_start(flash_three_times_fast_indicator);
-      }
+        {
+          indicator_start(flash_three_times_fast_indicator);
+          NRF_LOG_DEBUG("Release to reset bonds\n");
+        }
       else if (duration == 10)
-      {
-        indicator_start(flash_four_times_fast_indicator);
-        NRF_LOG_DEBUG("Release to reset config to default\n");
-      }
+        {
+          indicator_start(flash_four_times_fast_indicator);
+          NRF_LOG_DEBUG("Release to reset config to default\n");
+        }
+      else if (duration == 15)
+        {
+          indicator_start(flash_four_times_fast_indicator);
+          NRF_LOG_DEBUG("Release to reset board\n");
+        }
       else if (duration == 20)
-      {
-        indicator_start(flash_four_times_fast_indicator);
-        NRF_LOG_DEBUG("Release to reset board\n");
-      }
+        {
+          indicator_start(flash_once_indicator);
+          NRF_LOG_DEBUG("Release to reset board\n");
+        }
       break;
 
     case BUTTON_EVENT_RELEASE:
       NRF_LOG_DEBUG("Button release\n");
       if (duration >= 20)
-      {
-        NVIC_SystemReset();
-      }
+        {
+          // Ignore
+        }
+      else if (duration >= 15)
+        {
+          NVIC_SystemReset();
+        }
       else if (duration >= 10)
-      {
-        beacon_config_reset();
+        {
+          beacon_config_reset();
+        }
+      else if (duration >= 5)
+        {
+          ret_code_t err_code;
 
-        ret_code_t err_code;
-
-        NRF_LOG_INFO("Erase bonds!");
-        err_code = pm_peers_delete();
-        APP_ERROR_CHECK(err_code);
-      }
+          NRF_LOG_INFO("Erase bonds!");
+          err_code = pm_peers_delete();
+          APP_ERROR_CHECK(err_code);
+        }
       else if (duration >= 2 && duration < 5 && !beacon_is_connected())
-      {
-        beacon_start_advertising_connectable();
-      }
+        {
+          beacon_start_advertising_connectable();
+        }
       break;
     }
 }

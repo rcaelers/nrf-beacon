@@ -141,6 +141,7 @@ on_ble_event(ble_evt_t const *ble_evt, void *context)
       break;
 
     case BLE_GATTS_EVT_SYS_ATTR_MISSING:
+      NRF_LOG_DEBUG("GATT server sys attr missing.");
       err_code = sd_ble_gatts_sys_attr_set(ble_evt->evt.common_evt.conn_handle, NULL, 0, 0);
       APP_ERROR_CHECK(err_code);
       break;
@@ -165,10 +166,6 @@ pm_evt_handler(pm_evt_t const * p_evt)
 
     case PM_EVT_CONN_SEC_SUCCEEDED:
       {
-        NRF_LOG_INFO("Connection secured: role: %d, conn_handle: 0x%x, procedure: %d.",
-                     ble_conn_state_role(p_evt->conn_handle),
-                     p_evt->conn_handle,
-                     p_evt->params.conn_sec_succeeded.procedure);
       }
       break;
 
@@ -201,30 +198,35 @@ pm_evt_handler(pm_evt_t const * p_evt)
 
     case PM_EVT_PEERS_DELETE_SUCCEEDED:
       {
+        NRF_LOG_INFO("Peers deleted successfully.");
         beacon_start_advertising();
       }
       break;
 
     case PM_EVT_PEER_DATA_UPDATE_FAILED:
       {
+        NRF_LOG_INFO("Peer data update failed.");
         APP_ERROR_CHECK(p_evt->params.peer_data_update_failed.error);
       }
       break;
 
     case PM_EVT_PEER_DELETE_FAILED:
       {
+        NRF_LOG_INFO("Peer delete failed.");
         APP_ERROR_CHECK(p_evt->params.peer_delete_failed.error);
       }
       break;
 
     case PM_EVT_PEERS_DELETE_FAILED:
       {
+        NRF_LOG_INFO("Peers delete failed.");
         APP_ERROR_CHECK(p_evt->params.peers_delete_failed_evt.error);
       }
       break;
 
     case PM_EVT_ERROR_UNEXPECTED:
       {
+        NRF_LOG_INFO("Unexpected.");
         APP_ERROR_CHECK(p_evt->params.error_unexpected.error);
       }
       break;
@@ -234,7 +236,6 @@ pm_evt_handler(pm_evt_t const * p_evt)
     case PM_EVT_PEER_DELETE_SUCCEEDED:
     case PM_EVT_LOCAL_DB_CACHE_APPLIED:
     case PM_EVT_LOCAL_DB_CACHE_APPLY_FAILED:
-      // This can happen when the local DB has changed.
     case PM_EVT_SERVICE_CHANGED_IND_SENT:
     case PM_EVT_SERVICE_CHANGED_IND_CONFIRMED:
     default:

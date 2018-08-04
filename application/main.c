@@ -110,7 +110,7 @@ on_button_callback(button_event_t event, int duration)
         }
       else if (duration == 15)
         {
-          indicator_start(flash_two_times_fast_indicator);
+          indicator_start(flash_twice_fast_indicator);
           NRF_LOG_DEBUG("Release to reset board\n");
         }
       else if (duration == 20)

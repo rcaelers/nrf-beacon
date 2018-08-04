@@ -110,13 +110,13 @@ on_button_callback(button_event_t event, int duration)
         }
       else if (duration == 15)
         {
-          indicator_start(flash_four_times_fast_indicator);
+          indicator_start(flash_two_times_fast_indicator);
           NRF_LOG_DEBUG("Release to reset board\n");
         }
       else if (duration == 20)
         {
           indicator_start(flash_once_indicator);
-          NRF_LOG_DEBUG("Release to reset board\n");
+          NRF_LOG_DEBUG("Release cancel\n");
         }
       break;
 

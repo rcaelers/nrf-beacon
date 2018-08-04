@@ -2,11 +2,10 @@ PROJECT_NAME     := beacon_holyiot_s132
 TARGETS          := nrf52832_xxaa
 OUTPUT_DIRECTORY := _build
 
-#SDK_ROOT := ../../../../..
 PROJ_DIR := .
 
-SDK_ROOT := ${HOME}/tmp/nRF5_SDK_15.0.0_a53641a/
-GNU_INSTALL_ROOT := ${HOME}/opt/gcc-arm-none-eabi-6-2017-q2-update/bin/
+SDK_ROOT ?= ../nRF5_SDK_15.0.0_a53641a/
+GNU_INSTALL_ROOT ?= ../gcc-arm-none-eabi-6-2017-q2-update/bin/
 
 $(OUTPUT_DIRECTORY)/nrf52832_xxaa.out: \
   LINKER_SCRIPT  := boards/holyiot/beacon_gcc_nrf52.ld

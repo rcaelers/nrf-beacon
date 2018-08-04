@@ -46,13 +46,14 @@ static ble_gap_sec_params_t m_sec_params;
 static uint16_t m_connection_handle = BLE_CONN_HANDLE_INVALID;
 static uint8_t m_adv_handle = BLE_GAP_ADV_SET_HANDLE_NOT_SET;
 static uint8_t m_enc_advdata[BLE_GAP_ADV_SET_DATA_SIZE_MAX];
-static uint8_t m_enc_scan_response_data[BLE_GAP_ADV_SET_DATA_SIZE_MAX];
+static uint8_t m_enc_scan_response_data_not_connectable[BLE_GAP_ADV_SET_DATA_SIZE_MAX];
+static uint8_t m_enc_scan_response_data_connectable[BLE_GAP_ADV_SET_DATA_SIZE_MAX];
 static bool m_connectable = false;
 
 NRF_BLE_GATT_DEF(m_gatt);
 NRF_BLE_QWR_DEF(m_qwr);
 
-static ble_gap_adv_data_t m_adv_data =
+static ble_gap_adv_data_t m_adv_data_not_connectable =
   {
    .adv_data =
    {
@@ -61,7 +62,21 @@ static ble_gap_adv_data_t m_adv_data =
    },
    .scan_rsp_data =
    {
-    .p_data = m_enc_scan_response_data,
+    .p_data = m_enc_scan_response_data_not_connectable,
+    .len = BLE_GAP_ADV_SET_DATA_SIZE_MAX
+   }
+  };
+
+static ble_gap_adv_data_t m_adv_data_connectable =
+  {
+   .adv_data =
+   {
+    .p_data = m_enc_advdata,
+    .len = BLE_GAP_ADV_SET_DATA_SIZE_MAX
+   },
+   .scan_rsp_data =
+   {
+    .p_data = m_enc_scan_response_data_connectable,
     .len = BLE_GAP_ADV_SET_DATA_SIZE_MAX
    }
   };
@@ -349,8 +364,13 @@ gap_params_init()
   err_code = sd_ble_gap_ppcp_set(&gap_conn_params);
   APP_ERROR_CHECK(err_code);
 
+}
+
+static void
+gap_init()
+{
+  gap_params_init();
   gap_privacy_init();
-  gap_pin_init();
 }
 
 static void
@@ -377,20 +397,27 @@ advertising_data_init()
 {
   ret_code_t err_code;
   ble_advdata_t advdata;
-  ble_advdata_t srdata;
+  ble_advdata_t srdata_not_connectable;
+  ble_advdata_t srdata_connectable;
 
   memset(&advdata, 0, sizeof(advdata));
   advdata.name_type = BLE_ADVDATA_NO_NAME;
-  advdata.include_appearance = true;
+  advdata.include_appearance = false;
   advdata.flags = BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE;
 
-  memset(&srdata, 0, sizeof(srdata));
-  srdata.name_type = BLE_ADVDATA_FULL_NAME;
+  memset(&srdata_not_connectable, 0, sizeof(srdata_not_connectable));
+  srdata_not_connectable.name_type = BLE_ADVDATA_NO_NAME;
 
-  err_code = ble_advdata_encode(&advdata, m_adv_data.adv_data.p_data, &m_adv_data.adv_data.len);
+  memset(&srdata_connectable, 0, sizeof(srdata_connectable));
+  srdata_connectable.name_type = BLE_ADVDATA_FULL_NAME;
+
+  err_code = ble_advdata_encode(&advdata, m_adv_data_connectable.adv_data.p_data, &m_adv_data_connectable.adv_data.len);
   APP_ERROR_CHECK(err_code);
 
-  err_code = ble_advdata_encode(&srdata, m_adv_data.scan_rsp_data.p_data, &m_adv_data.scan_rsp_data.len);
+  err_code = ble_advdata_encode(&srdata_not_connectable, m_adv_data_not_connectable.scan_rsp_data.p_data, &m_adv_data_not_connectable.scan_rsp_data.len);
+  APP_ERROR_CHECK(err_code);
+
+  err_code = ble_advdata_encode(&srdata_connectable, m_adv_data_connectable.scan_rsp_data.p_data, &m_adv_data_connectable.scan_rsp_data.len);
   APP_ERROR_CHECK(err_code);
 }
 
@@ -440,28 +467,29 @@ conn_params_init()
 static void
 peer_manager_init()
 {
-  ble_gap_sec_params_t sec_param;
   ret_code_t           err_code;
 
   err_code = pm_init();
   APP_ERROR_CHECK(err_code);
 
-  memset(&sec_param, 0, sizeof(ble_gap_sec_params_t));
+  memset(&m_sec_params, 0, sizeof(ble_gap_sec_params_t));
 
-  sec_param.bond           = 1;
-  sec_param.mitm           = 1;
-  sec_param.lesc           = 0;
-  sec_param.keypress       = 0;
-  sec_param.io_caps        = BLE_GAP_IO_CAPS_DISPLAY_ONLY;
-  sec_param.oob            = 0;
-  sec_param.min_key_size   = 7;
-  sec_param.max_key_size   = 16;
-  sec_param.kdist_own.enc  = 1;
-  sec_param.kdist_own.id   = 1;
-  sec_param.kdist_peer.enc = 1;
-  sec_param.kdist_peer.id  = 1;
+  m_sec_params.bond           = 1;
+  m_sec_params.mitm           = 1;
+  m_sec_params.lesc           = 0;
+  m_sec_params.keypress       = 0;
+  m_sec_params.io_caps        = BLE_GAP_IO_CAPS_DISPLAY_ONLY;
+  m_sec_params.oob            = 0;
+  m_sec_params.min_key_size   = 7;
+  m_sec_params.max_key_size   = 16;
+  m_sec_params.kdist_own.enc  = 1;
+  m_sec_params.kdist_own.id   = 1;
+  m_sec_params.kdist_peer.enc = 1;
+  m_sec_params.kdist_peer.id  = 1;
 
-  err_code = pm_sec_params_set(&sec_param);
+  gap_pin_init();
+
+  err_code = pm_sec_params_set(&m_sec_params);
   APP_ERROR_CHECK(err_code);
 
   err_code = pm_register(pm_evt_handler);
@@ -472,7 +500,7 @@ void
 beacon_init()
 {
   peer_manager_init();
-  gap_params_init();
+  gap_init();
   gatt_init();
   advertising_data_init();
   services_init();
@@ -488,6 +516,7 @@ beacon_start_advertising_connectable()
 
   beacon_stop_advertising();
   m_connectable = true;
+
   gap_privacy_init();
 
   ble_gap_adv_params_t adv_params;
@@ -499,7 +528,7 @@ beacon_start_advertising_connectable()
   adv_params.filter_policy   = BLE_GAP_ADV_FP_ANY;
   adv_params.interval        = MSEC_TO_UNITS(config->adv_interval, UNIT_0_625_MS);
 
-  uint32_t err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &adv_params);
+  uint32_t err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data_connectable, &adv_params);
   APP_ERROR_CHECK(err_code);
 
   err_code = sd_ble_gap_adv_start(m_adv_handle, APP_BLE_CONN_CFG_TAG);
@@ -519,6 +548,7 @@ beacon_start_advertising_non_connectable()
 
   beacon_stop_advertising();
   m_connectable = false;
+
   gap_privacy_init();
 
   ble_gap_adv_params_t adv_params;
@@ -530,7 +560,7 @@ beacon_start_advertising_non_connectable()
   adv_params.filter_policy   = BLE_GAP_ADV_FP_ANY;
   adv_params.interval        = MSEC_TO_UNITS(config->adv_interval, UNIT_0_625_MS);
 
-  uint32_t err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data, &adv_params);
+  uint32_t err_code = sd_ble_gap_adv_set_configure(&m_adv_handle, &m_adv_data_not_connectable, &adv_params);
 
   APP_ERROR_CHECK(err_code);
 

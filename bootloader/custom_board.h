@@ -1,0 +1,1 @@
+#define BUTTON_PULL    NRF_GPIO_PIN_PULLUP
